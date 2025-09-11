@@ -1,0 +1,93 @@
+{
+    "CaptionDetailed": 
+    [
+        {
+            "role": "system",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "You are an AI assistant that helps people interpret images. You will be shown an image. Describe the most important parts of the image in detail."
+                }
+            ]
+        },
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "Describe the image below in detail."
+                }
+            ]
+        }
+    ],
+    "CaptionSimple": 
+    [
+        {
+            "role": "system",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "You are an AI assistant that helps people interpret images. You will be shown an image. Describe the image."
+                }
+            ]
+        },
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "Describe the image below concisely."
+                }
+            ]
+        }
+    ],
+    "OCR": 
+    [
+        {
+            "role": "system",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "You are an AI assistant that helps people read text in images. You will be shown an image. Transcribe the text exactly how it is presented. Do not output anything other than the text in the image. If there is no text, respond with 'No text found'."
+                }
+            ]
+        },
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "Transcribe the text in the image exactly how it is presented. Do not output anything other than the text in the image. If there is no text, respond with 'No text found'."
+                }
+            ]
+        }
+    ],
+    "OCRForce": 
+    [
+        {
+            "role": "system",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "You are an AI assistant that helps people read text in images. You will be shown an image. Transcribe the text exactly how it is presented. Do not output anything other than the text in the image. Try to infer text if it is difficult to read."
+                }
+            ]
+        },
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "Transcribe the text in the image exactly how it is presented. Do not output anything other than the text in the image. Try to infer text if it is difficult to read."
+                }
+            ]
+        }
+    ],
+    "Image":
+        {
+            "type": "image_url",
+            "image_url": {
+                "url": ""
+            }
+        }
+}
