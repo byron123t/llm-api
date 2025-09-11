@@ -35,6 +35,8 @@ from openai_api import OpenAIAPI
 client = OpenAIAPI(deployment=model)
 output = client.chat_completion(base_prompt, max_tokens=max_tokens)
 ```
+# Supported Models
+- `gpt-5`, `gpt-5-chat`, `o3`, `o3-pro`, `o4-mini`, `gpt-4o`, `gpt-4.1-mini`
 # API Key
 Email bjaytang@umich.edu for the Azure keys.
 Run:
