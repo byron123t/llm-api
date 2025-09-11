@@ -39,10 +39,10 @@ output = client.chat_completion(base_prompt, max_tokens=max_tokens)
 Email bjaytang@umich.edu for the Azure keys.
 Run:
 ```bash
-conda env config vars set AZURE_API_KEY_1="key_from_brian" AZURE_API_KEY_2="key_2_from_brian"
+conda env config vars set AZURE_API_KEY_1="key_1_from_brian" AZURE_API_KEY_2="key_2_from_brian"
 ```
 or
 ```bash
-export AZURE_API_KEY_1="key_from_brian"
+export AZURE_API_KEY_1="key_1_from_brian"
 export AZURE_API_KEY_2="key_2_from_brian"
 ```
