@@ -6,6 +6,7 @@ from openai_api import (
     document_ocr,
     image_generation,
     IMAGE_GEN_MODEL,
+    ALL_CHAT_MODELS,
 )
 from prompts import PROMPTS
 from image_encode import local_image_to_data_url, local_file_to_data_url
@@ -53,14 +54,7 @@ def run_image_generation_demo(save_path="static/generated_image.png"):
 # Test image used for caption demos
 IMAGE_PATH = "static/test.png"
 
-# Chat models that support vision/image inputs (used for caption demos)
-CHAT_VISION_DEMO_MODELS = [
-    "gpt-4o",
-    "gpt-5.4",
-    "grok-4-1-fast-reasoning",
-]
-
-# Text-only model (no vision); demo with a non-image prompt
+# Text-only model (no vision); use a text prompt fallback
 DEEPSEEK_MODEL = "DeepSeek-V3.2"
 
 # Paths for Mistral Document AI OCR demos (base64 only)
@@ -79,13 +73,32 @@ def print_mistral_ocr_output(label, result):
 
 
 if __name__ == "__main__":
-    # Simple caption with vision-capable models only
+    # Simple caption across the full chat model suite
     messages_simple = build_caption_messages("CaptionSimple", IMAGE_PATH)
-    for model_name in CHAT_VISION_DEMO_MODELS:
+    text_messages = [
+        {
+            "role": "user",
+            "content": "What is the capital of France? Reply in one sentence.",
+        }
+    ]
+    for model_name in sorted(ALL_CHAT_MODELS):
         try:
-            run_chat_demo(model_name, messages_simple)
+            # DeepSeek is text-only in this project setup.
+            if model_name == DEEPSEEK_MODEL:
+                run_chat_demo(model_name, text_messages)
+            else:
+                run_chat_demo(model_name, messages_simple)
         except Exception as e:
-            print(f"{model_name}: Error — {e}\n")
+            # If a model rejects image input, retry with a text prompt so the suite
+            # still validates connectivity for that model.
+            if model_name != DEEPSEEK_MODEL:
+                try:
+                    print(f"{model_name}: Vision request failed, retrying text-only.\n")
+                    run_chat_demo(model_name, text_messages)
+                except Exception as retry_err:
+                    print(f"{model_name}: Error — {retry_err}\n")
+            else:
+                print(f"{model_name}: Error — {e}\n")
 
     # Detailed caption (gpt-4o)
     messages_detailed = build_caption_messages("CaptionDetailed", IMAGE_PATH)
@@ -93,13 +106,6 @@ if __name__ == "__main__":
         run_chat_demo("gpt-4o", messages_detailed)
     except Exception as e:
         print(f"gpt-4o: Error — {e}\n")
-
-    # DeepSeek-V3.2: text-only
-    text_messages = [{"role": "user", "content": "What is the capital of France? Reply in one sentence."}]
-    try:
-        run_chat_demo(DEEPSEEK_MODEL, text_messages)
-    except Exception as e:
-        print(f"{DEEPSEEK_MODEL}: Error — {e}\n")
 
     # Image generation
     try:

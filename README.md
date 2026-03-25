@@ -15,6 +15,7 @@ All models use a **single** Azure API key.
 - **`AZURE_API_KEY`** (required) — Used for every model (chat, Document AI, image gen/edit).
 - **`AZURE_ENDPOINT`** (optional) — Azure OpenAI base URL for chat and image generation. Default: `https://bjayt-mffvuqlc-eastus2.cognitiveservices.azure.com/`
 - **`AZURE_SERVERLESS_ENDPOINT`** (optional) — Base URL for Mistral Document AI and OpenAI-compatible chat (e.g. DeepSeek, Grok). Default: `https://bjayt-mffvuqlc-eastus2.services.ai.azure.com`
+- **`AZURE_RESPONSES_API_VERSION`** (optional) — Query `api-version` for Azure [Responses API](https://learn.microsoft.com/azure/ai-services/openai/how-to/responses) (`gpt-5.3-codex`, `gpt-5.4-pro`, `o3-pro`). Default: **`preview`** (date-stamped versions often return “API version not supported” on this endpoint). If needed, set explicitly; the client also retries `preview` and `2025-03-01-preview` / `2025-04-01-preview` when Azure rejects the first version.
 
 Example:
 ```bash
@@ -26,7 +27,8 @@ export AZURE_SERVERLESS_ENDPOINT="https://your-services.ai.azure.com"
 
 # Supported models
 
-- **Chat (Azure):** `gpt-4.1`, `gpt-4.1-mini`, `gpt-4o`, `gpt-4o-mini`, `gpt-5`, `gpt-5-chat`, `gpt-5.1`, `gpt-5.2`, `gpt-5.2-chat`, `gpt-5.3-codex`, `gpt-5.4`, `gpt-5.4-pro`, `o3`, `o3-pro`, `o4-mini`
+- **Chat (Azure):** `gpt-4.1`, `gpt-4.1-mini`, `gpt-4o`, `gpt-4o-mini`, `gpt-5`, `gpt-5-chat`, `gpt-5.1`, `gpt-5.2`, `gpt-5.2-chat`, `gpt-5.3-codex`, `gpt-5.4`, `gpt-5.4-pro`, `o3`, `o3-pro`, `o4-mini`  
+  - **`gpt-5.3-codex`**, **`gpt-5.4-pro`**, and **`o3-pro`** use Azure’s **Responses API** (`POST .../openai/v1/responses`) instead of `chat.completions`. You still call `OpenAIAPI(...).chat_completion(...)`; routing is automatic.
 - **Chat (OpenAI-compatible):** `DeepSeek-V3.2`, `grok-4-1-fast-non-reasoning`, `grok-4-1-fast-reasoning`
 - **Document AI:** `mistral-document-ai-2512` (OCR; base64 input only)
 - **Image:** `gpt-image-1.5` (generation and edit)
@@ -34,7 +36,7 @@ export AZURE_SERVERLESS_ENDPOINT="https://your-services.ai.azure.com"
 # API usage
 
 ## Chat (all chat models)
-Same interface for Azure and OpenAI-compatible chat models. Supports multimodal messages (text + image).
+Same interface for Azure and OpenAI-compatible chat models. Supports multimodal messages (text + image). Models that require the Responses API are handled internally (see `AZURE_RESPONSES_API_MODELS` in `openai_api.py`).
 
 ```python
 from openai_api import OpenAIAPI
