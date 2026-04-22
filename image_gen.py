@@ -24,17 +24,18 @@ def run_image_generation(prompt, save_path):
     print(f"{IMAGE_GEN_MODEL} generated: {os.path.abspath(save_path)}")
 
 
-def run_image_edit(image_path, mask_path, prompt, save_path):
-    """Edit an image given an input image and mask."""
+def run_image_edit(image_path, prompt, save_path, mask_path=None):
+    """Edit an image given an input image and optional mask."""
     resp = image_edit(
         image_path=image_path,
-        mask_path=mask_path,
         prompt=prompt,
+        mask_path=mask_path,
     )
     b64 = resp["data"][0]["b64_json"]
     with open(save_path, "wb") as f:
         f.write(base64.b64decode(b64))
-    print(f"{IMAGE_GEN_MODEL} edited (with mask): {os.path.abspath(save_path)}")
+    suffix = " (with mask)" if mask_path else ""
+    print(f"{IMAGE_GEN_MODEL} edited{suffix}: {os.path.abspath(save_path)}")
 
 
 def add_alpha_to_mask(img_path_mask, output_path):
@@ -97,19 +98,18 @@ if __name__ == "__main__":
     #     save_path="static/generated_image.png",
     # )
 
-    generate_full_image_mask(
-        image_path="static/input_image.png",
-        mask_path="static/mask_2.png",
-    )
+    #generate_full_image_mask(
+    #    image_path="static/input_image.png",
+    #    mask_path="static/mask_2.png",
+    #)
 
     # Image edit using input_image.jpg without a mask
-    input_image = "static/input_image.png"
+    input_image = "image.png"
     if os.path.isfile(input_image):
         run_image_edit(
             image_path=input_image,
-            mask_path="static/mask_1.png",
-            prompt="Fix the hand and background. Make it look anime style consistent with the original image.",
-            save_path="static/edited_image.png",
+            prompt="Generate an image of a fox."
+            save_path="image.png",
         )
     else:
         print(f"Skipping edit: {input_image} not found.")

@@ -1,5 +1,6 @@
 import os
 import requests
+import httpx
 from openai import AzureOpenAI, OpenAI
 from sensitive import (
     AZURE_API_KEY,
@@ -87,7 +88,15 @@ def _messages_to_responses_payload(messages):
         if role not in ("user", "assistant"):
             continue
         if isinstance(content, str):
-            input_items.append({"role": role, "content": content})
+            text = content.strip()
+            if not text:
+                continue
+            input_items.append(
+                {
+                    "role": role,
+                    "content": [{"type": "input_text", "text": text}],
+                }
+            )
             continue
         if not isinstance(content, list):
             continue
@@ -97,12 +106,17 @@ def _messages_to_responses_payload(messages):
                 continue
             ptype = part.get("type")
             if ptype == "text":
-                parts.append({"type": "input_text", "text": part.get("text", "")})
+                text = part.get("text", "")
+                if text:
+                    parts.append({"type": "input_text", "text": text})
             elif ptype == "image_url":
                 iu = part.get("image_url") or {}
                 url = iu.get("url") if isinstance(iu, dict) else iu
                 if url:
-                    parts.append({"type": "input_image", "image_url": url})
+                    image_part = {"type": "input_image", "image_url": url}
+                    if isinstance(iu, dict) and iu.get("detail"):
+                        image_part["detail"] = iu["detail"]
+                    parts.append(image_part)
         if parts:
             input_items.append({"role": role, "content": parts})
     instructions = "\n\n".join(p for p in instruction_parts if p.strip()) or None
@@ -145,6 +159,10 @@ def _responses_api_chat(deployment: str, messages, max_tokens: int) -> _ChatComp
     headers = {
         "Content-Type": "application/json",
         "Api-Key": AZURE_API_KEY,
+        # Prevent connection reuse: Azure closes the socket after each long-running
+        # inference response.  Without this the requests pool tries to reuse the
+        # dead socket on the next call and stalls indefinitely.
+        "Connection": "close",
     }
     # Build version list: user/env first, then fallbacks (deduped).
     versions = [azure_responses_api_version]
@@ -153,40 +171,45 @@ def _responses_api_chat(deployment: str, messages, max_tokens: int) -> _ChatComp
             versions.append(v)
 
     last_detail = None
-    resp = None
-    for api_ver in versions:
-        resp = requests.post(
-            url,
-            headers=headers,
-            params={"api-version": api_ver},
-            json=body,
-            timeout=600,
-        )
-        if resp.ok:
-            break
-        try:
-            detail = resp.json()
-            last_detail = detail
-            err_msg = str((detail.get("error") or {}).get("message", "")).lower()
-        except Exception:
-            last_detail = resp.text
-            err_msg = ""
-        is_version_reject = resp.status_code == 400 and (
-            "api version" in err_msg and "not supported" in err_msg
-        )
-        if is_version_reject and api_ver != versions[-1]:
-            continue
-        raise RuntimeError(
-            f"Responses API {resp.status_code} {resp.reason} (api-version={api_ver}): {last_detail}"
-        )
+    response_data = None
+    # Use a fresh Session per call so no pooled socket is ever reused.
+    with requests.Session() as session:
+        for api_ver in versions:
+            resp = session.post(
+                url,
+                headers=headers,
+                params={"api-version": api_ver},
+                json=body,
+                timeout=600,
+            )
+            if resp.ok:
+                response_data = resp.json()
+                break
+            try:
+                detail = resp.json()
+                last_detail = detail
+                err_msg = str((detail.get("error") or {}).get("message", "")).lower()
+            except Exception:
+                last_detail = resp.text
+                err_msg = ""
+            is_version_reject = resp.status_code == 400 and (
+                "api version" in err_msg and "not supported" in err_msg
+            )
+            if is_version_reject and api_ver != versions[-1]:
+                continue
+            raise RuntimeError(
+                f"Responses API {resp.status_code} {resp.reason} (api-version={api_ver}): {last_detail}"
+            )
 
-    data = resp.json()
-    if data.get("error"):
-        raise RuntimeError(data["error"])
-    text = _extract_text_from_responses_body(data)
+    if response_data is None:
+        raise RuntimeError("Responses API: no successful response received.")
+    if response_data.get("error"):
+        raise RuntimeError(response_data["error"])
+    text = _extract_text_from_responses_body(response_data)
     return _ChatCompletionShim(text)
 # Match Azure Images reference for gpt-image-1.5
-IMAGE_API_VERSION = "2025-04-01-preview"
+IMAGE_API_VERSION = "2024-02-01"
+_IMAGE_EDIT_API_VERSION_FALLBACKS = ("2024-02-01", "2025-04-01-preview", "2025-03-01-preview")
 
 
 class OpenAIAPI:
@@ -201,16 +224,24 @@ class OpenAIAPI:
         if self._use_azure_responses:
             self._client = None
         elif deployment in AZURE_CHAT_MODELS:
+            # Disable httpx keep-alive so stale pooled connections don't cause
+            # hangs after the first response (Azure closes the socket server-side).
             self._client = AzureOpenAI(
                 azure_endpoint=azure_endpoint.rstrip("/") + "/",
                 api_key=self._api_key,
                 api_version=AZURE_API_VERSION,
+                http_client=httpx.Client(
+                    limits=httpx.Limits(max_keepalive_connections=0, max_connections=20),
+                ),
             )
         else:
             base_url = azure_serverless_endpoint.rstrip("/") + "/openai/v1"
             self._client = OpenAI(
                 base_url=base_url,
                 api_key=self._api_key,
+                http_client=httpx.Client(
+                    limits=httpx.Limits(max_keepalive_connections=0, max_connections=20),
+                ),
             )
 
     def chat_completion(self, messages, max_tokens=16384):
@@ -272,7 +303,7 @@ def image_generation(
     # Use `Api-Key` header as in Azure REST examples
     headers = {
         "Content-Type": "application/json",
-        "Api-Key": AZURE_API_KEY,
+        "Authorization": f"Bearer {AZURE_API_KEY}",
     }
     body = {
         "prompt": prompt,
@@ -289,42 +320,49 @@ def image_generation(
 
 def image_edit(
     image_path,
-    mask_path,
     prompt,
+    mask_path=None,
     size="1024x1024",
     quality="medium",
     output_compression=100,
     output_format="png",
     n=1,
 ):
-    """Edit an image with gpt-image-1.5 using a mask. Returns the raw API
-    response; use response['data'][0]['b64_json'] for the base64 image.
-    Same contract as image_edit, but includes a mask file.
+    """Edit an image with gpt-image-1.5. Returns the raw API response; use
+    response['data'][0]['b64_json'] for the base64 image. mask_path is optional.
     """
     base = azure_endpoint.rstrip("/")
-    url = f"{base}/openai/deployments/{IMAGE_GEN_MODEL}/images/edits?api-version={IMAGE_API_VERSION}"
-    # Use `Api-Key` header, no explicit Content-Type (requests will set multipart boundary)
-    headers = {"Api-Key": AZURE_API_KEY}
+    headers = {"Authorization": f"Bearer {AZURE_API_KEY}"}
+    data = {
+        "prompt": prompt,
+        "n": n,
+        "size": size,
+        "quality": quality,
+    }
 
-    # Follow Azure Images Edit reference: multipart/form-data with image (+ optional mask)
-    # and form fields: prompt, n, size, quality.
-    with open(image_path, "rb") as img, open(mask_path, "rb") as msk:
-        files = {
-            "image": (os.path.basename(image_path), img, "image/jpeg"),
-            "mask": (os.path.basename(mask_path), msk, "image/png"),
-        }
-        data = {
-            "prompt": prompt,
-            "n": n,
-            "size": size,
-            "quality": quality,
-        }
-        resp = requests.post(
-            url,
-            headers=headers,
-            files=files,
-            data=data,
-            timeout=120,
-        )
-    resp.raise_for_status()
-    return resp.json()
+    def _do_request(api_version, img_file, msk_file=None):
+        url = f"{base}/openai/deployments/{IMAGE_GEN_MODEL}/images/edits?api-version={api_version}"
+        files = {"image": (os.path.basename(image_path), img_file, "image/jpeg")}
+        if msk_file is not None:
+            files["mask"] = (os.path.basename(mask_path), msk_file, "image/png")
+        return requests.post(url, headers=headers, files=files, data=data, timeout=120)
+
+    errors = []
+    for api_version in _IMAGE_EDIT_API_VERSION_FALLBACKS:
+        if mask_path is not None:
+            with open(image_path, "rb") as img, open(mask_path, "rb") as msk:
+                resp = _do_request(api_version, img, msk)
+        else:
+            with open(image_path, "rb") as img:
+                resp = _do_request(api_version, img)
+        if resp.ok:
+            return resp.json()
+        errors.append(f"  api-version={api_version}: {resp.status_code} {resp.reason}")
+        if resp.status_code == 404:
+            continue
+        resp.raise_for_status()
+    raise RuntimeError(
+        f"{IMAGE_GEN_MODEL} /images/edits is not available on this Azure resource.\n"
+        + "\n".join(errors)
+        + "\nVerify the deployment supports image editing in the Azure portal."
+    )

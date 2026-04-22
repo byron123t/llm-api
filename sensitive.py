@@ -11,3 +11,9 @@ azure_serverless_endpoint = os.getenv(
     "AZURE_SERVERLESS_ENDPOINT",
     "https://bjayt-mffvuqlc-eastus2.services.ai.azure.com",
 )
+# Azure Responses API (/openai/v1/responses). Date-stamped versions often return
+# "API version not supported" on many resources; `preview` is the usual value in MS docs.
+azure_responses_api_version = os.getenv(
+    "AZURE_RESPONSES_API_VERSION",
+    "preview",
+)
